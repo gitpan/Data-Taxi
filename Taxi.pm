@@ -20,6 +20,18 @@ Data::Taxi - Taint-aware, XML-ish data serialization
 
 
 
+=head1 INSTALLATION
+
+Data::Taxi can be installed with the usual routine:
+
+	perl Makefile.PL
+	make
+	make test
+	make install
+
+You can also just copy Taxi.pm into the Data/ directory of one of your library trees.
+
+
 =head1 DESCRIPTION
 
 Taxi (B<T>aint-B<A>ware B<X>ML-B<I>sh) is a data serializer with several handy features:
@@ -69,7 +81,7 @@ require Exporter;
 
 
 # version
-$VERSION = '0.90';
+$VERSION = '0.91';
 $FORMAT_VERSION = '1.00';
 undef $HANDLE_FORMATS{$FORMAT_VERSION};
 
@@ -94,9 +106,9 @@ use constant SCALAR   => 4;
 
 =head2 freeze($ob)
 
-C<freeze> serializes a single scalar, has reference, array reference, or
-scalar references into an XML string, C<freeze> can recurse any number of 
-levels of a nested tree and preserve  multiple references to the same object. 
+C<freeze> serializes a single scalar, hash reference, array reference, or
+scalar reference into an XML string, C<freeze> can recurse any number of 
+levels of a nested tree and preserve multiple references to the same object. 
 Let's look at an example:
 
 	my ($tree, $format, $members, $bool, $mysca);
@@ -187,9 +199,13 @@ sub freeze {
 # Private subroutine: recurses through data structure building the data string.
 # 
 sub obtag {
-	my ($ob, $ids, $depth, $name) = @_;
+	my ($ob, $ids, $depth, %opts) = @_;
 	my ($ref, @rv, $indent);
 
+	# get tied class
+	if (defined $opts{'tied'})
+		{$opts{'tied'} =~ s|\=.*||}
+	
 	# build the indentation string for this recursion.
 	$indent = "\t" x $depth;
 	
@@ -197,6 +213,7 @@ sub obtag {
 	if ($ref = ref($ob)) {
 		my $tagname = "$ob";
 		my $org = $tagname;
+		my ($tie);
 		
 		$tagname =~ s|^[^\=]*\=||;
 		$tagname =~ s|\(.*||;
@@ -205,8 +222,8 @@ sub obtag {
 		# open tag
 		push @rv, $indent, '<', $tagname;
 		
-		if (defined $name)
-			{push @rv, ' name="', mlesc($name), '"'}
+		if (defined $opts{'name'} )
+			{push @rv, ' name="', mlesc( $opts{'name'} ), '"'}
 		
 		# if in $ids
 		if ($ids->{$ob})
@@ -216,22 +233,38 @@ sub obtag {
 		# $ids->{$ob} = 1;
 		$ids->{$ob} = keys(%{$ids});
 		
-
+		
 		# output ID
 		# push @rv, ' id="', mlesc($ob), '"';
 		push @rv, ' id="', $ids->{$ob}, '"';
-
 		
-		if ($ref !~ m/^(HASH|ARRAY|REF)$/)
+		# class
+		if ($ref !~ m/^(HASH|ARRAY|REF|SCALAR)$/)
 			{push @rv, ' class="', mlesc($ref), '"'}
+		
+		# tied hash
+		if ($ref eq 'HASH') {
+			if (my $tie = tied(%{$ob}) ) {
+				$tie =~ s|\=.*||;
+				push @rv, ' tied="', mlesc($tie), '"';
+			}
+		}
+		
+		# tied array
+		elsif ($ref eq 'ARRAY') {
+			if (my $tie = tied(@{$ob}) ) {
+				$tie =~ s|\=.*||;
+				push @rv, ' tied="', mlesc($tie), '"';
+			}
+		}
 		
 		# close tag
 		push @rv, ">\n";
 		
 		# output children: hashref
 		if ($tagname eq 'hashref') {
-			while( my($k, $v) = each(%{$ob}) )
-				{push @rv, obtag($v, $ids, $depth + 1, $k)}
+			foreach my $k (keys %{$ob} )
+				{push @rv, obtag($ob->{$k}, $ids, $depth + 1, 'name'=>$k, 'tied'=>tied($ob->{$k}))}
 		}
 		
 		# output children: arrayref
@@ -242,7 +275,7 @@ sub obtag {
 		
 		# output children: scalarref
 		elsif ($tagname eq 'scalarref')
-			{ push @rv, obtag(${$ob}, $ids, $depth + 1) }
+			{ push @rv, obtag(${$ob}, $ids, $depth + 1, 'tied'=>tied(${$ob})   ) }
 		
 		# else don't know this type of reference
 		else
@@ -255,9 +288,12 @@ sub obtag {
 	# else output tag with self-ender
 	else {
 		push @rv, $indent, '<scalar';
+		
+		if (defined $opts{'name'} )
+			{push @rv, ' name="', mlesc( $opts{'name'} ), '"'}
 
-		if (defined $name)
-			{push @rv, ' name="', mlesc($name), '"'}
+		if (defined $opts{'tied'} )
+			{push @rv, ' tied="', mlesc( $opts{'tied'} ), '"'}
 
 		if (defined $ob)
 			{push @rv, ' value="', mlesc($ob), '"'}
@@ -320,11 +356,11 @@ sub thaw {
 	# 
 	# placeholders for un-escaping
 	#-------------------------------------------------------------
-
+	
 	
 	# split into tags
 	$raw =~ s|^\s*\<||;
-	$raw =~ s|\>$||;
+	$raw =~ s|\s*\>$||;
 	@els = split(m|\>\s*\<|, $raw);
 	undef $raw; # don't need this anymore, might as well clean up now
 	
@@ -341,48 +377,28 @@ sub thaw {
 		}
 		
 		# variables
-		my ($type, $new, $selfender, %atts, $ref);
+		my ($type, $new, $selfender, %atts, $ref, $tagname);
 		
-		# get type
-		if ($el =~ s|^hashref\b\s*||i) {
-			$type = HASHREF;
-			$new = {};
-			$ref = 1;
-		}
-		elsif ($el =~ s|^arrayref\b\s*||i) {
-			$type = ARRREF;
-			$new = [];
-			$ref = 1;
-		}
-		elsif ($el =~ s|^scalarref\b\s*||i) {
-			$type = SCAREF;
-			$ref = 1;
-		}
-		elsif ($el =~ s|^scalar\b\s*||i) {
-			$type = SCALAR;
-		}
-		elsif ( (! $firstdone) && ($el =~ s|^taxi\b\s*||i) ) {
-			# do nothing
-		}
-
-		# else I don't know this tag
-		else
-			{croak "do not understand tag: $el"}
-
-		# self-ender?
+		# get tagname
+		$el =~ s|^\s*||;
 		$el =~ s|\s*$||;
-		$selfender = $el =~ s|\s*/$||;
+		$el =~ s|^(\S+)\s*||
+			or die "invalid tag: $el";
+		$tagname = lc($1) . ($el x 0);
+
+		# TESTING
+		#unless ($tagname && $el)
+		#	{die "$tagname && $el"}
+		
+		# self-ender?
+		$selfender = $el =~ s|\s*\/$||;
 		
 		
 		#-------------------------------------------------------------
 		# parse into hash
 		# 
-		$el =~ s|\s*\<$||;
 		$el =~ s|(\S+)\s*\=\s*"([^"]*)"\s*|\L$1\E\<$2\<|g;
 		
-		# TESTING
-		#print "[$el]\n";
-
 		%atts = grep {
 			s|$quote|"|g;
 			s|$left|<|g;
@@ -394,6 +410,56 @@ sub thaw {
 		# parse into hash
 		#-------------------------------------------------------------
 		
+		# hasrefs
+		if ($tagname eq 'hashref') {
+			$type = HASHREF;
+			
+			# if tied
+			if (defined $atts{'tied'}) {
+				my %hash;
+				tie %hash, $atts{'tied'};
+				$new = \%hash;
+			}
+			
+			# else not tied
+			else
+				{$new = {}}
+			
+			$ref = 1;
+		}
+
+		# array refs
+		elsif ($tagname eq 'arrayref') {
+			$type = ARRREF;
+			
+			# if tied
+			if (defined $atts{'tied'}) {
+				my @arr;
+				tie @arr, $atts{'tied'};
+				$new = \@arr;
+			}
+
+			# else not tied
+			else
+				{$new = []}
+
+			$ref = 1;
+		}
+		elsif ($tagname eq 'scalarref') {
+			$type = SCAREF;
+			$ref = 1;
+		}
+		elsif ($tagname eq 'scalar') {
+			$type = SCALAR;
+		}
+		elsif ( (! $firstdone) && ($tagname eq 'taxi') ) {
+			# do nothing
+		}
+		
+		# else I don't know this tag
+		else
+			{croak "do not understand tag: $tagname $el"}
+		
 		
 		# if first tag
 		if (! $firstdone) {
@@ -404,13 +470,20 @@ sub thaw {
 			$firstdone = 1;
 			next TAGLOOP;
 		}
-
 		
 		# if ID, and ID already exists, that's the new object
 		if (  defined($atts{'id'})  &&  $ids{$atts{'id'}}   )
 			{$new = $ids{$atts{'id'}} }
+		
+		# if blessed reference
 		elsif (defined $atts{'class'})
-			{bless $new, $atts{'class'}}
+			{
+			print STDERR "before\n"; # TESTING
+			
+			bless $new, $atts{'class'};
+			
+			print STDERR "after\n"; # TESTING
+			}
 		
 		# if scalar
 		elsif ($type == SCALAR)
@@ -431,8 +504,11 @@ sub thaw {
 			my($prev, $prevtype) = @{$stack[$#stack]};
 			
 			# if prevtype is array, push into prev
-			if ($prevtype == HASHREF)
-				{$prev->{$atts{'name'}} = $new}
+			if ($prevtype == HASHREF) {
+				
+
+				$prev->{$atts{'name'}} = $new;
+			}
 			
 			# if prevtype is array, push into prev
 			elsif ($prevtype == ARRREF)
@@ -440,7 +516,7 @@ sub thaw {
 			
 			# else set scalar reference
 			else
-				{${$prev} = $new}
+				{$prev = \$new}
 		}
 
 		# if this is a selfender
@@ -498,14 +574,15 @@ that's cool, drop me an email and we can work together.
 
 =head1 TODO
 
+Tied scalars don't work.  The code started getting spaghettish trying to implement them, 
+so I decided to use the Asimov method and stop thkining about it for a while.  Tied
+hashes and arrays should work fine.
+
 =over
 
 =item See how people like it
 
 =back
-
-=head1 License
-
 
 
 =head1 TERMS AND CONDITIONS
@@ -524,5 +601,9 @@ F<miko@idocs.com>
 =head1 VERSION
 
  Version 0.90    June 15, 2002
+ initial public release
+ 
+ Version 0.91    July 10, 2002
+ minor improvment to documentation
 
 =cut
