@@ -1,7 +1,9 @@
 package Data::Taxi;
 use strict;
-use vars ('$VERSION', '$FORMAT_VERSION', '%HANDLE_FORMATS');
+use vars qw[@ISA $VERSION $FORMAT_VERSION %HANDLE_FORMATS @EXPORT_OK %EXPORT_TAGS];
 use Carp 'croak';
+use Exporter;
+@ISA = 'Exporter';
 use 5.006;
 
 
@@ -70,18 +72,15 @@ None by default.  freeze and thaw with ':all':
 
 =cut
 
-use vars '@EXPORT_OK', '%EXPORT_TAGS', '@ISA';
-require Exporter;
-@ISA = qw(Exporter);
-@EXPORT_OK = qw(freeze thaw);
-%EXPORT_TAGS = ('all' => [qw(freeze thaw)]);
+@EXPORT_OK = qw[freeze thaw];
+%EXPORT_TAGS = ('all' => [@EXPORT_OK]);
 # 
 # import/export
 #------------------------------------------------------------------------
 
 
 # version
-$VERSION = '0.91';
+$VERSION = '0.94';
 $FORMAT_VERSION = '1.00';
 undef $HANDLE_FORMATS{$FORMAT_VERSION};
 
@@ -112,7 +111,7 @@ levels of a nested tree and preserve multiple references to the same object.
 Let's look at an example:
 
 	my ($tree, $format, $members, $bool, $mysca);
-
+	
 	# anonymous hash
 	$format = {
 		'app'=>'trini',
@@ -125,10 +124,10 @@ Let's look at an example:
 	
 	# blessed object
 	$bool = Math::BooleanEval->new('whatever');
-
+	
 	# scalar reference (to an anonymous hash, no less)
 	$mysca = {'name'=>'miko', 'email'=>'miko@idocs.com', };
-
+	
 	# the whole thing
 	$tree = {
 		'dataformat' => $format,
@@ -137,7 +136,7 @@ Let's look at an example:
 		'members' => $members,
 		'myscaref' => \$mysca,
 	};
-
+	
 	$frozen = freeze($tree);
 
 C<freeze> accepts one object as input.  The code above results in the following
@@ -183,9 +182,11 @@ XML-ish string:
 # data to build the data string.
 
 sub freeze {
+	my ($ob, %opts) = @_;
+	
 	return 
 		'<taxi ver="' . $Data::Taxi::FORMAT_VERSION . "\">\n" . 
-		join('',  obtag($_[0], {}, 1)) . 
+		join('',  obtag($ob, {}, 1, %opts)) . 
 		"</taxi>\n";
 }
 # 
@@ -200,8 +201,12 @@ sub freeze {
 # 
 sub obtag {
 	my ($ob, $ids, $depth, %opts) = @_;
-	my ($ref, @rv, $indent);
-
+	my ($ref, @rv, $indent, $allowed);
+	
+	# hash of allowed fields to save
+	$allowed = get_allowed(\%opts);
+	
+	
 	# get tied class
 	if (defined $opts{'tied'})
 		{$opts{'tied'} =~ s|\=.*||}
@@ -263,8 +268,14 @@ sub obtag {
 		
 		# output children: hashref
 		if ($tagname eq 'hashref') {
-			foreach my $k (keys %{$ob} )
-				{push @rv, obtag($ob->{$k}, $ids, $depth + 1, 'name'=>$k, 'tied'=>tied($ob->{$k}))}
+			HASHLOOP:
+			foreach my $k (keys %{$ob} ){
+				# if not allowed
+				if ($allowed && (! exists $allowed->{$k}) )
+					{next HASHLOOP}
+				
+				push @rv, obtag($ob->{$k}, $ids, $depth + 1, 'name'=>$k, 'tied'=>tied($ob->{$k}));
+			}
 		}
 		
 		# output children: arrayref
@@ -330,8 +341,8 @@ sub thaw {
 	# XML gurus will wince at this code. 
 	if ($raw =~ s|^\<\?||)
 		{$raw =~ s|^[^\>]*>||}
-
-
+	
+	
 	#-------------------------------------------------------------
 	# placeholders for un-escaping
 	# 
@@ -342,7 +353,7 @@ sub thaw {
 	while (keys(%esc) < 4) {
 		my $str = rand;
 		$str =~ s|^0\.||;
-
+		
 		unless ($raw =~ m|$str|)
 			{undef $esc{$str}}
 	}
@@ -379,19 +390,15 @@ sub thaw {
 		# variables
 		my ($type, $new, $selfender, %atts, $ref, $tagname);
 		
+		# self-ender?
+		$selfender = $el =~ s|\s*\/$||s;
+		
 		# get tagname
 		$el =~ s|^\s*||;
 		$el =~ s|\s*$||;
-		$el =~ s|^(\S+)\s*||
+		$el =~ s|^([^\s\"]+)\s*||s
 			or die "invalid tag: $el";
 		$tagname = lc($1) . ($el x 0);
-
-		# TESTING
-		#unless ($tagname && $el)
-		#	{die "$tagname && $el"}
-		
-		# self-ender?
-		$selfender = $el =~ s|\s*\/$||;
 		
 		
 		#-------------------------------------------------------------
@@ -427,7 +434,7 @@ sub thaw {
 			
 			$ref = 1;
 		}
-
+		
 		# array refs
 		elsif ($tagname eq 'arrayref') {
 			$type = ARRREF;
@@ -438,20 +445,23 @@ sub thaw {
 				tie @arr, $atts{'tied'};
 				$new = \@arr;
 			}
-
+			
 			# else not tied
 			else
 				{$new = []}
-
+			
 			$ref = 1;
 		}
+		
 		elsif ($tagname eq 'scalarref') {
 			$type = SCAREF;
 			$ref = 1;
 		}
+		
 		elsif ($tagname eq 'scalar') {
 			$type = SCALAR;
 		}
+		
 		elsif ( (! $firstdone) && ($tagname eq 'taxi') ) {
 			# do nothing
 		}
@@ -459,7 +469,6 @@ sub thaw {
 		# else I don't know this tag
 		else
 			{croak "do not understand tag: $tagname $el"}
-		
 		
 		# if first tag
 		if (! $firstdone) {
@@ -477,13 +486,7 @@ sub thaw {
 		
 		# if blessed reference
 		elsif (defined $atts{'class'})
-			{
-			print STDERR "before\n"; # TESTING
-			
-			bless $new, $atts{'class'};
-			
-			print STDERR "after\n"; # TESTING
-			}
+			{bless $new, $atts{'class'}}
 		
 		# if scalar
 		elsif ($type == SCALAR)
@@ -555,13 +558,35 @@ sub mlesc {
 #-----------------------------------------------------------------------------------
 
 
+#-----------------------------------------------------------------------------------
+# get_allowed
+# 
+# Private sub. Returns a hash ref of allowed fields if such an options was sent.
+# 
+sub get_allowed {
+        my ($opts) = @_;
+		exists($opts->{'allowed'}) or return undef;
+		
+		my ($rv, %alluse);
+		ref($opts->{'allowed'}) or $opts->{'allowed'} = [$opts->{'allowed'}];
+		
+		@alluse{@{$opts->{'allowed'}}} = ();
+		$rv = \%alluse;
+		delete $opts->{'allowed'};
+		return $rv;
+}
+# 
+# get_allowed
+#-----------------------------------------------------------------------------------
+
+
 # return true
 1;
 
 __END__
 
 
-=head1 Is Taxi data XML?
+=head1 IS TAXI DATA XML?
 
 Although Taxi's data format is XML-ish, it's not fully compliant 
 to XML in all regards.  For now, Taxi only promises that it can input
@@ -575,15 +600,8 @@ that's cool, drop me an email and we can work together.
 =head1 TODO
 
 Tied scalars don't work.  The code started getting spaghettish trying to implement them, 
-so I decided to use the Asimov method and stop thkining about it for a while.  Tied
+so I decided to use the Asimov method and stop thinking about it for a while.  Tied
 hashes and arrays should work fine.
-
-=over
-
-=item See how people like it
-
-=back
-
 
 =head1 TERMS AND CONDITIONS
 
@@ -605,5 +623,15 @@ F<miko@idocs.com>
  
  Version 0.91    July 10, 2002
  minor improvment to documentation
+ 
+ Version 0.94    April 26, 2003
+ Fixed problem handling undefined scalars.
+
+
+
+
+
+=end CPAN
+
 
 =cut

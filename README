@@ -1,4 +1,4 @@
-Data/Taxi version 0.91
+Data/Taxi version 0.94
 ========================
 
 NAME
@@ -54,7 +54,7 @@ Subroutines
     object. Let's look at an example:
 
             my ($tree, $format, $members, $bool, $mysca);
-
+        
             # anonymous hash
             $format = {
                     'app'=>'trini',
@@ -67,10 +67,10 @@ Subroutines
         
             # blessed object
             $bool = Math::BooleanEval->new('whatever');
-
+        
             # scalar reference (to an anonymous hash, no less)
             $mysca = {'name'=>'miko', 'email'=>'miko@idocs.com', };
-
+        
             # the whole thing
             $tree = {
                     'dataformat' => $format,
@@ -79,7 +79,7 @@ Subroutines
                     'members' => $members,
                     'myscaref' => \$mysca,
             };
-
+        
             $frozen = freeze($tree);
 
     "freeze" accepts one object as input. The code above results in the
@@ -125,7 +125,7 @@ Subroutines
 
        $tree = thaw($frozen);
 
-Is Taxi data XML?
+IS TAXI DATA XML?
     Although Taxi's data format is XML-ish, it's not fully compliant to XML
     in all regards. For now, Taxi only promises that it can input its own
     output. The reason I didn't go for full XML compliance is that I wanted
@@ -136,10 +136,9 @@ Is Taxi data XML?
 
 TODO
     Tied scalars don't work. The code started getting spaghettish trying to
-    implement them, so I decided to use the Asimov method and stop thkining
+    implement them, so I decided to use the Asimov method and stop thinking
     about it for a while. Tied hashes and arrays should work fine.
 
-    See how people like it
 TERMS AND CONDITIONS
     Copyright (c) 2002 by Miko O'Sullivan. All rights reserved. This program
     is free software; you can redistribute it and/or modify it under the
@@ -155,4 +154,7 @@ VERSION
  
      Version 0.91    July 10, 2002
      minor improvment to documentation
+ 
+     Version 0.94    April 26, 2003
+     Fixed problem handling undefined scalars.
 

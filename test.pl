@@ -1,17 +1,33 @@
-# Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl test.pl'
-
-#########################
-
-# change 'tests => 1' to 'tests => last_test_to_print';
-
+#!/usr/local/bin/perl -w
+use strict;
+use Carp 'confess', 'croak';
 use Test;
+
+# use lib '../../';  # TESTING
+use Data::Taxi;    # TESTING
+
+
 BEGIN { plan tests => 1 };
-use Data::Taxi;
-ok(1); # If we made it this far, we're ok.
 
-#########################
 
-# Insert your test code below, the Test module is use()ed here so read
-# its man page ( perldoc Test ) for help writing this test script.
+my ($struct, $hold);
 
+$struct = 
+	{
+	
+	name => 'Miko',
+	
+	schools => [
+		'Cardinal Forest',
+		'Robinson',
+		'VA Tech',
+		],
+	};
+
+$hold = Data::Taxi::freeze($struct);
+$struct = Data::Taxi::thaw($hold);
+
+if ($struct->{'schools'}->[1] eq 'Robinson')
+	{ok 1}
+else
+	{ok 0}
