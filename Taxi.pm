@@ -11,6 +11,8 @@ use 5.006;
 
 Data::Taxi - Taint-aware, XML-ish data serialization
 
+PLEASE NOTE: Data::Taxi is no longer being developed or supported.
+
 =head1 SYNOPSIS
 
   use Data::Taxi ':all';
@@ -62,7 +64,7 @@ of XML-ish data that could probably be read in by other XML parsers.
 
 #------------------------------------------------------------------------
 # import/export
-# 
+#
 
 =head1 EXPORT
 
@@ -74,13 +76,13 @@ None by default.  freeze and thaw with ':all':
 
 @EXPORT_OK = qw[freeze thaw];
 %EXPORT_TAGS = ('all' => [@EXPORT_OK]);
-# 
+#
 # import/export
 #------------------------------------------------------------------------
 
 
 # version
-$VERSION = '0.94';
+$VERSION = '0.95';
 $FORMAT_VERSION = '1.00';
 undef $HANDLE_FORMATS{$FORMAT_VERSION};
 
@@ -189,19 +191,19 @@ sub freeze {
 		join('',  obtag($ob, {}, 1, %opts)) . 
 		"</taxi>\n";
 }
-# 
+#
 # freeze
 #-----------------------------------------------------------------------------------
 
 
 #-----------------------------------------------------------------------------------
 # obtag
-# 
+#
 # Private subroutine: recurses through data structure building the data string.
-# 
+#
 sub obtag {
 	my ($ob, $ids, $depth, %opts) = @_;
-	my ($ref, @rv, $indent, $allowed);
+	my (@rv, $indent, $allowed);
 	
 	# hash of allowed fields to save
 	$allowed = get_allowed(\%opts);
@@ -215,7 +217,7 @@ sub obtag {
 	$indent = "\t" x $depth;
 	
 	# if reference
-	if ($ref = ref($ob)) {
+	if (my $ref = ref($ob)) {
 		my $tagname = "$ob";
 		my $org = $tagname;
 		my ($tie);
@@ -290,12 +292,12 @@ sub obtag {
 		
 		# else don't know this type of reference
 		else
-			{die "don't know this type of reference: $tagname"}
+			{ croak "don't know this type of reference: $tagname" }
 		
 		# close tag
 		push @rv, $indent, '</', $tagname, ">\n";
 	}
-
+	
 	# else output tag with self-ender
 	else {
 		push @rv, $indent, '<scalar';
@@ -627,8 +629,8 @@ F<miko@idocs.com>
  Version 0.94    April 26, 2003
  Fixed problem handling undefined scalars.
 
-
-
+ Version 0.95    Oct 31, 2008
+ Adding notice of last release
 
 
 =end CPAN

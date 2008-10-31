@@ -1,8 +1,7 @@
-Data/Taxi version 0.94
-========================
-
 NAME
     Data::Taxi - Taint-aware, XML-ish data serialization
+
+    PLEASE NOTE: Data::Taxi is no longer being developed or supported.
 
 SYNOPSIS
       use Data::Taxi ':all';
@@ -47,7 +46,6 @@ EXPORT
 
 Subroutines
   freeze($ob)
-
     "freeze" serializes a single scalar, hash reference, array reference, or
     scalar reference into an XML string, "freeze" can recurse any number of
     levels of a nested tree and preserve multiple references to the same
@@ -118,7 +116,6 @@ Subroutines
        </taxi>
 
   thaw
-
     "thaw" accepts one argument, the serialized data string, and returns a
     single value, the reconstituted data, rebuilding the entire data
     structure including blessed references.
@@ -157,4 +154,7 @@ VERSION
  
      Version 0.94    April 26, 2003
      Fixed problem handling undefined scalars.
+
+     Version 0.95    Oct 31, 2008
+     Adding notice of last release
 
