@@ -3,6 +3,7 @@ use strict;
 use vars qw[@ISA $VERSION $FORMAT_VERSION %HANDLE_FORMATS @EXPORT_OK %EXPORT_TAGS];
 use Carp 'croak';
 use Exporter;
+use Debug::ShowStuff ':all';
 @ISA = 'Exporter';
 use 5.006;
 
@@ -82,7 +83,7 @@ None by default.  freeze and thaw with ':all':
 
 
 # version
-$VERSION = '0.95';
+$VERSION = '0.96';
 $FORMAT_VERSION = '1.00';
 undef $HANDLE_FORMATS{$FORMAT_VERSION};
 
@@ -105,7 +106,7 @@ use constant SCALAR   => 4;
 # freeze
 # 
 
-=head2 freeze($ob)
+=head2 freeze($ob, %opts)
 
 C<freeze> serializes a single scalar, hash reference, array reference, or
 scalar reference into an XML string, C<freeze> can recurse any number of 
@@ -185,11 +186,22 @@ XML-ish string:
 
 sub freeze {
 	my ($ob, %opts) = @_;
+	my $rv = '';
 	
-	return 
-		'<taxi ver="' . $Data::Taxi::FORMAT_VERSION . "\">\n" . 
-		join('',  obtag($ob, {}, 1, %opts)) . 
+	# if a declaration is wanted
+	if (
+		$opts{'declaration'} ||
+		(! defined $opts{'declaration'})
+		) {
+		$rv .= qq|<?xml version="1.0"?>\n|;
+	}
+	
+	$rv .=
+		'<taxi ver="' . $Data::Taxi::FORMAT_VERSION . "\">\n" .
+		join('',  obtag($ob, {}, 1, %opts)) .
 		"</taxi>\n";
+	
+	return $rv;
 }
 #
 # freeze
@@ -322,14 +334,15 @@ sub obtag {
 
 
 
-#-----------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # thaw data
-# 
+#
 
 =head2  thaw
 
-C<thaw> accepts one argument, the serialized data string, and returns a single value, the reconstituted data, rebuilding 
-the entire data structure including blessed references. 
+C<thaw> accepts one argument, the serialized data string, and returns a single
+value, the reconstituted data, rebuilding the entire data structure including
+blessed references.
 
    $tree = thaw($frozen);
 
@@ -339,19 +352,19 @@ sub thaw {
 	my ($raw) = @_;
 	my (@els, @stack, %ids, %esc, $quote, $left, $right, $amp, $firstdone);
 	
-	# remove XML document header, we're not s'fisticaded 'nuff for that kinda thang yet.
-	# XML gurus will wince at this code. 
+	# remove XML document header, we're not s'fisticaded 'nuff for that
+	# kinda thang yet. XML gurus will wince at this code. 
 	if ($raw =~ s|^\<\?||)
 		{$raw =~ s|^[^\>]*>||}
 	
 	
 	#-------------------------------------------------------------
 	# placeholders for un-escaping
-	# 
+	#
 	# I'm sure this could be done more gracefully.  Feel free to
 	# to tidy up the unescaping routine and submit back your code.
 	# :-) Miko
-	# 
+	#
 	while (keys(%esc) < 4) {
 		my $str = rand;
 		$str =~ s|^0\.||;
@@ -366,7 +379,7 @@ sub thaw {
 	$raw =~ s|&#60;|$left|g;
 	$raw =~ s|&#62;|$right|g;
 	$raw =~ s|&#38;|$amp|g;
-	# 
+	#
 	# placeholders for un-escaping
 	#-------------------------------------------------------------
 	
@@ -405,7 +418,7 @@ sub thaw {
 		
 		#-------------------------------------------------------------
 		# parse into hash
-		# 
+		#
 		$el =~ s|(\S+)\s*\=\s*"([^"]*)"\s*|\L$1\E\<$2\<|g;
 		
 		%atts = grep {
@@ -415,11 +428,14 @@ sub thaw {
 			s|$amp|&|g;
 			1;
 			} split('<', $el);
-		# 
+		#
 		# parse into hash
 		#-------------------------------------------------------------
 		
-		# hasrefs
+		
+		#-------------------------------------------------------------
+		# hashrefs
+		#
 		if ($tagname eq 'hashref') {
 			$type = HASHREF;
 			
@@ -436,8 +452,14 @@ sub thaw {
 			
 			$ref = 1;
 		}
+		#
+		# hashrefs
+		#-------------------------------------------------------------
 		
+		
+		#-------------------------------------------------------------
 		# array refs
+		#
 		elsif ($tagname eq 'arrayref') {
 			$type = ARRREF;
 			
@@ -454,19 +476,44 @@ sub thaw {
 			
 			$ref = 1;
 		}
+		#
+		# array refs
+		#-------------------------------------------------------------
 		
+		
+		#-------------------------------------------------------------
+		# scalarref
+		#
 		elsif ($tagname eq 'scalarref') {
 			$type = SCAREF;
 			$ref = 1;
 		}
+		#
+		# scalarref
+		#-------------------------------------------------------------
 		
+		
+		#-------------------------------------------------------------
+		# scalar
+		#
 		elsif ($tagname eq 'scalar') {
 			$type = SCALAR;
 		}
+		#
+		# scalar
+		#-------------------------------------------------------------
 		
+		
+		#-------------------------------------------------------------
+		# taxi
+		#
 		elsif ( (! $firstdone) && ($tagname eq 'taxi') ) {
 			# do nothing
 		}
+		#
+		# taxi
+		#-------------------------------------------------------------
+		
 		
 		# else I don't know this tag
 		else
@@ -536,16 +583,15 @@ sub thaw {
 	# if we get this far, that's an error
 	die 'invalid FreezDry data format';
 }
-# 
+#
 # thaw data
-#-----------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 
 #-----------------------------------------------------------------------------------
 # mlesc
-# 
 # Private sub. Escapes &, <, >, and " so that they don't mess up my parser.
-# 
+#
 sub mlesc {
         my ($rv) = @_;
         return '' unless defined($rv);
@@ -622,15 +668,18 @@ F<miko@idocs.com>
 
  Version 0.90    June 15, 2002
  initial public release
- 
+
  Version 0.91    July 10, 2002
  minor improvment to documentation
- 
+
  Version 0.94    April 26, 2003
  Fixed problem handling undefined scalars.
 
  Version 0.95    Oct 31, 2008
  Adding notice of last release
+
+ Version 0.96    Nov 14, 2010
+ Fixing bug:
 
 
 =end CPAN
